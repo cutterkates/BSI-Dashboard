@@ -385,11 +385,16 @@ def main():
 
     st.sidebar.markdown("---")
 
-    # View level selection
+    # View level selection - check session state for navigation
+    view_levels = ["Company", "Territory", "Region", "Club"]
+    default_index = 0
+    if 'view_level' in st.session_state and st.session_state['view_level'] in view_levels:
+        default_index = view_levels.index(st.session_state['view_level'])
+
     view_level = st.sidebar.radio(
         "Dashboard Level",
-        ["Company", "Territory", "Region", "Club"],
-        index=0
+        view_levels,
+        index=default_index
     )
 
     # Dynamic filters based on view level
@@ -398,9 +403,14 @@ def main():
     selected_club = None
 
     if view_level in ["Territory", "Region", "Club"]:
+        territory_list = list(HIERARCHY.keys())
+        territory_index = 0
+        if 'selected_territory' in st.session_state and st.session_state['selected_territory'] in territory_list:
+            territory_index = territory_list.index(st.session_state['selected_territory'])
         selected_territory = st.sidebar.selectbox(
             "Select Territory",
-            list(HIERARCHY.keys())
+            territory_list,
+            index=territory_index
         )
 
     if view_level in ["Region", "Club"] and selected_territory:
