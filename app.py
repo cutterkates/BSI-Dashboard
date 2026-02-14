@@ -531,58 +531,60 @@ def main():
 
     st.markdown("")
 
-    # Top Locations by Projected Revenue (only show at Company, Territory, Region levels)
+    # Top 5 PT Projected Revenue (only show at Company, Territory, Region levels)
     if view_level != "Club":
-        st.markdown("#### 🏆 Top Locations by Projected Revenue")
+        st.markdown("#### 💪 Top 5 PT Projected Revenue")
 
         # Filter clubs based on current view level
         if view_level == "Company":
             filtered_clubs = data['clubs']
-            top_title = "Top 10 Clubs Company-Wide"
+            top_title = "Top 5 PT Projected Revenue - Company Wide"
         elif view_level == "Territory":
             filtered_clubs = {k: v for k, v in data['clubs'].items() if v.get('Territory') == selected_territory}
-            top_title = f"Top 10 Clubs in {selected_territory}"
+            top_title = f"Top 5 PT Projected Revenue - {selected_territory}"
         else:  # Region
             filtered_clubs = {k: v for k, v in data['clubs'].items() if v.get('Region') == selected_region}
-            top_title = f"Top Clubs in {selected_region}"
+            top_title = f"Top 5 PT Projected Revenue - {selected_region}"
 
         # Build ranking data
         ranking_data = []
         for club_name, metrics in filtered_clubs.items():
-            proj_rev = safe_float(metrics.get('Projected Revenue', 0))
-            revenue = safe_float(metrics.get('Revenue', 0))
-            new_members = safe_float(metrics.get('New Members', 0))
+            pt_proj_rev = safe_float(metrics.get('Projected Revenue', 0))
+            pt_revenue = safe_float(metrics.get('Revenue', 0))
+            avg_deal = safe_float(metrics.get('Avg Deal', 0))
+            fc_closes = safe_float(metrics.get('FCs Closes', 0))
             region = metrics.get('Region', '')
             territory = metrics.get('Territory', '')
             ranking_data.append({
                 'Club': club_name,
                 'Region': region,
                 'Territory': territory,
-                'Projected Revenue': proj_rev,
-                'Revenue (MTD)': revenue,
-                'New Members': new_members
+                'PT Projected Revenue': pt_proj_rev,
+                'PT Revenue (MTD)': pt_revenue,
+                'Avg Deal': avg_deal,
+                'FC Closes': fc_closes
             })
 
         if ranking_data:
             df_ranking = pd.DataFrame(ranking_data)
-            df_ranking = df_ranking.sort_values('Projected Revenue', ascending=False).head(10)
+            df_ranking = df_ranking.sort_values('PT Projected Revenue', ascending=False).head(5)
 
             col1, col2 = st.columns([2, 1])
 
             with col1:
-                # Bar chart of top locations
+                # Bar chart of top PT revenue locations
                 fig = go.Figure(go.Bar(
-                    x=df_ranking['Projected Revenue'],
+                    x=df_ranking['PT Projected Revenue'],
                     y=df_ranking['Club'],
                     orientation='h',
-                    marker_color='#0066CC',
-                    text=df_ranking['Projected Revenue'].apply(lambda x: f"${x:,.0f}"),
+                    marker_color='#34C759',
+                    text=df_ranking['PT Projected Revenue'].apply(lambda x: f"${x:,.0f}"),
                     textposition='outside',
                     textfont={'size': 11, 'color': '#666666'}
                 ))
                 fig.update_layout(
                     title={'text': top_title, 'font': {'size': 14, 'color': '#333333'}},
-                    height=max(300, len(df_ranking) * 40),
+                    height=280,
                     margin=dict(l=10, r=100, t=40, b=20),
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
@@ -594,10 +596,10 @@ def main():
             with col2:
                 # Summary table
                 st.markdown(f"**{top_title}**")
-                df_display = df_ranking[['Club', 'Projected Revenue', 'Revenue (MTD)', 'New Members']].copy()
-                df_display['Projected Revenue'] = df_display['Projected Revenue'].apply(lambda x: f"${x:,.0f}")
-                df_display['Revenue (MTD)'] = df_display['Revenue (MTD)'].apply(lambda x: f"${x:,.0f}")
-                df_display['New Members'] = df_display['New Members'].apply(lambda x: f"{x:.0f}")
+                df_display = df_ranking[['Club', 'PT Projected Revenue', 'PT Revenue (MTD)', 'Avg Deal']].copy()
+                df_display['PT Projected Revenue'] = df_display['PT Projected Revenue'].apply(lambda x: f"${x:,.0f}")
+                df_display['PT Revenue (MTD)'] = df_display['PT Revenue (MTD)'].apply(lambda x: f"${x:,.0f}")
+                df_display['Avg Deal'] = df_display['Avg Deal'].apply(lambda x: f"${x:,.0f}")
                 df_display = df_display.reset_index(drop=True)
                 df_display.index = df_display.index + 1  # Start ranking at 1
                 df_display.index.name = 'Rank'
