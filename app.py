@@ -577,6 +577,80 @@ def main():
 
     st.markdown("")
 
+    # Top Locations by Projected Revenue (only show at Company, Territory, Region levels)
+    if view_level != "Club":
+        st.markdown("#### 🏆 Top Locations by Projected Revenue")
+
+        # Filter clubs based on current view level
+        if view_level == "Company":
+            filtered_clubs = data['clubs']
+            top_title = "Top 10 Clubs Company-Wide"
+        elif view_level == "Territory":
+            filtered_clubs = {k: v for k, v in data['clubs'].items() if v.get('Territory') == selected_territory}
+            top_title = f"Top 10 Clubs in {selected_territory}"
+        else:  # Region
+            filtered_clubs = {k: v for k, v in data['clubs'].items() if v.get('Region') == selected_region}
+            top_title = f"Top Clubs in {selected_region}"
+
+        # Build ranking data
+        ranking_data = []
+        for club_name, metrics in filtered_clubs.items():
+            proj_rev = safe_float(metrics.get('Projected Revenue', 0))
+            revenue = safe_float(metrics.get('Revenue', 0))
+            new_members = safe_float(metrics.get('New Members', 0))
+            region = metrics.get('Region', '')
+            territory = metrics.get('Territory', '')
+            ranking_data.append({
+                'Club': club_name,
+                'Region': region,
+                'Territory': territory,
+                'Projected Revenue': proj_rev,
+                'Revenue (MTD)': revenue,
+                'New Members': new_members
+            })
+
+        if ranking_data:
+            df_ranking = pd.DataFrame(ranking_data)
+            df_ranking = df_ranking.sort_values('Projected Revenue', ascending=False).head(10)
+
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                # Bar chart of top locations
+                fig = go.Figure(go.Bar(
+                    x=df_ranking['Projected Revenue'],
+                    y=df_ranking['Club'],
+                    orientation='h',
+                    marker_color='#0066CC',
+                    text=df_ranking['Projected Revenue'].apply(lambda x: f"${x:,.0f}"),
+                    textposition='outside',
+                    textfont={'size': 11, 'color': '#666666'}
+                ))
+                fig.update_layout(
+                    title={'text': top_title, 'font': {'size': 14, 'color': '#333333'}},
+                    height=max(300, len(df_ranking) * 40),
+                    margin=dict(l=10, r=100, t=40, b=20),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    xaxis={'gridcolor': '#F0F0F0', 'tickprefix': '$', 'tickformat': ','},
+                    yaxis={'gridcolor': '#F0F0F0', 'categoryorder': 'total ascending'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                # Summary table
+                st.markdown(f"**{top_title}**")
+                df_display = df_ranking[['Club', 'Projected Revenue', 'Revenue (MTD)', 'New Members']].copy()
+                df_display['Projected Revenue'] = df_display['Projected Revenue'].apply(lambda x: f"${x:,.0f}")
+                df_display['Revenue (MTD)'] = df_display['Revenue (MTD)'].apply(lambda x: f"${x:,.0f}")
+                df_display['New Members'] = df_display['New Members'].apply(lambda x: f"{x:.0f}")
+                df_display = df_display.reset_index(drop=True)
+                df_display.index = df_display.index + 1  # Start ranking at 1
+                df_display.index.name = 'Rank'
+                st.dataframe(df_display, use_container_width=True)
+
+        st.markdown("")
+
     # Conversion Funnel
     st.markdown("#### 🎯 Sales Funnel Performance")
 
