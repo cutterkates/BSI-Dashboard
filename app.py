@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 from datetime import datetime, date
-import database as db
+# import database as db  # Disabled for now - to implement later
 import requests
 from io import BytesIO
 
@@ -419,56 +419,10 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**Last Updated:** {update_time}")
 
-    # Database section
+    # Database section - DISABLED FOR NOW (to implement later)
+    # Code preserved in database.py for future implementation
+
     st.sidebar.markdown("---")
-    st.sidebar.markdown("**💾 Database**")
-
-    # Save to database button
-    if st.sidebar.button("📥 Save to Database", use_container_width=True, help="Save current data to database for historical tracking"):
-        try:
-            # Get today's date for the record
-            record_date = date.today().isoformat()
-            filename = uploaded_file.name if uploaded_file else "Default File"
-
-            # Check if data for today already exists
-            if db.check_if_date_exists(record_date, selected_month):
-                st.sidebar.warning("Data for today already saved!")
-            else:
-                # Save upload record
-                record_count = len(data['clubs'])
-                upload_id = db.save_upload(filename, selected_month, record_count)
-
-                # Save company metrics
-                db.save_company_metrics(upload_id, record_date, selected_month, data['company'])
-
-                # Save territory metrics
-                for territory_name, metrics in data['territories'].items():
-                    db.save_territory_metrics(upload_id, record_date, selected_month, territory_name, metrics)
-
-                # Save region metrics
-                for region_name, metrics in data['regions'].items():
-                    # Find territory for this region
-                    territory = None
-                    for t, regions in HIERARCHY.items():
-                        if region_name in regions:
-                            territory = t
-                            break
-                    db.save_region_metrics(upload_id, record_date, selected_month, territory, region_name, metrics)
-
-                # Save club metrics
-                for club_name, metrics in data['clubs'].items():
-                    region = metrics.get('Region')
-                    territory = metrics.get('Territory')
-                    db.save_club_metrics(upload_id, record_date, selected_month, territory, region, club_name, metrics)
-
-                st.sidebar.success(f"✓ Saved {record_count} clubs to database!")
-        except Exception as e:
-            st.sidebar.error(f"Error saving: {str(e)}")
-
-    # Show upload history
-    upload_history = db.get_upload_history()
-    if not upload_history.empty:
-        st.sidebar.markdown(f"*{len(upload_history)} uploads in database*")
 
     # Auto-refresh option for live data
     auto_refresh = st.sidebar.checkbox("Auto-refresh (5 min)", value=False, help="Automatically refresh data every 5 minutes")
@@ -1087,120 +1041,8 @@ def main():
     with col2:
         st.dataframe(df_table.iloc[len(df_table)//2:], use_container_width=True, hide_index=True)
 
-    # Historical Trends Section (from database)
-    st.markdown("---")
-    st.markdown("#### 📈 Historical Trends")
-
-    # Get historical data based on current view level
-    try:
-        if view_level == "Company":
-            hist_df = db.get_historical_company_data(30)
-        elif view_level == "Territory" and selected_territory:
-            hist_df = db.get_historical_territory_data(selected_territory, 30)
-        elif view_level == "Region" and selected_region:
-            hist_df = db.get_historical_region_data(selected_region, 30)
-        elif view_level == "Club" and selected_club:
-            hist_df = db.get_historical_club_data(selected_club, 30)
-        else:
-            hist_df = pd.DataFrame()
-
-        if not hist_df.empty and len(hist_df) > 1:
-            hist_df['record_date'] = pd.to_datetime(hist_df['record_date'])
-            hist_df = hist_df.sort_values('record_date')
-
-            # Revenue trend
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if 'revenue' in hist_df.columns and hist_df['revenue'].notna().any():
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=hist_df['record_date'],
-                        y=hist_df['revenue'],
-                        mode='lines+markers',
-                        name='Revenue',
-                        line={'color': '#0066CC', 'width': 2},
-                        marker={'size': 8}
-                    ))
-                    fig.update_layout(
-                        title={'text': 'Revenue Trend', 'font': {'size': 14, 'color': '#333333'}},
-                        height=300,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        xaxis={'gridcolor': '#F0F0F0'},
-                        yaxis={'gridcolor': '#F0F0F0', 'tickprefix': '$', 'tickformat': ','}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-            with col2:
-                if 'new_members' in hist_df.columns and hist_df['new_members'].notna().any():
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=hist_df['record_date'],
-                        y=hist_df['new_members'],
-                        mode='lines+markers',
-                        name='New Members',
-                        line={'color': '#34C759', 'width': 2},
-                        marker={'size': 8}
-                    ))
-                    fig.update_layout(
-                        title={'text': 'New Members Trend', 'font': {'size': 14, 'color': '#333333'}},
-                        height=300,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        xaxis={'gridcolor': '#F0F0F0'},
-                        yaxis={'gridcolor': '#F0F0F0'}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-            # Conversion rate trends
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if 'lead_to_member_pct' in hist_df.columns and hist_df['lead_to_member_pct'].notna().any():
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=hist_df['record_date'],
-                        y=hist_df['lead_to_member_pct'] * 100,
-                        mode='lines+markers',
-                        name='Lead to Member %',
-                        line={'color': '#00A3E0', 'width': 2},
-                        marker={'size': 8}
-                    ))
-                    fig.update_layout(
-                        title={'text': 'Lead to Member % Trend', 'font': {'size': 14, 'color': '#333333'}},
-                        height=300,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        xaxis={'gridcolor': '#F0F0F0'},
-                        yaxis={'gridcolor': '#F0F0F0', 'ticksuffix': '%'}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-            with col2:
-                if 'appt_close_pct' in hist_df.columns and hist_df['appt_close_pct'].notna().any():
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=hist_df['record_date'],
-                        y=hist_df['appt_close_pct'] * 100,
-                        mode='lines+markers',
-                        name='Appt Close %',
-                        line={'color': '#AF52DE', 'width': 2},
-                        marker={'size': 8}
-                    ))
-                    fig.update_layout(
-                        title={'text': 'Appt Close % Trend', 'font': {'size': 14, 'color': '#333333'}},
-                        height=300,
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        xaxis={'gridcolor': '#F0F0F0'},
-                        yaxis={'gridcolor': '#F0F0F0', 'ticksuffix': '%'}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("📊 No historical data yet. Click 'Save to Database' in the sidebar to start tracking trends over time.")
-    except Exception as e:
-        st.info("📊 Upload and save data to see historical trends.")
+    # Historical Trends Section - DISABLED FOR NOW (to implement later)
+    # Code preserved in database.py for future implementation
 
     # Drill-down navigation
     st.markdown("---")
