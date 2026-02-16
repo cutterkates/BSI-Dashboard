@@ -10,7 +10,17 @@ import requests
 from io import BytesIO
 
 # Google Sheet Configuration
-GOOGLE_SHEET_ID = "1NLF3LTZbNybmSL8b7N3GSHwhfJD82Hxm-wkRiZooohk"
+DATA_SOURCES = {
+    "Daily KPI Scorecard": {
+        "id": "1NLF3LTZbNybmSL8b7N3GSHwhfJD82Hxm-wkRiZooohk",
+        "type": "operational"
+    },
+    "Budget Tracker": {
+        "id": "1oVKpIEmRUTzJX5T66ziGpx2VBhLAcEETcFCS1Q4ah3M",
+        "type": "budget"
+    },
+}
+DEFAULT_DATA_SOURCE = "Daily KPI Scorecard"
 
 def get_google_sheet_url(sheet_id, sheet_name):
     """Generate URL to fetch Google Sheet as Excel"""
@@ -116,54 +126,75 @@ HIERARCHY = {
     }
 }
 
-def load_data(file_path, sheet_name):
-    """Load and parse the Excel data into structured format"""
-    df = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+# Column mappings for different sheet types
+COL_MAP_OPERATIONAL = {
+    0: 'Entity',
+    1: 'Member Net',
+    2: 'Lead to Member %',
+    3: 'Lead Booked %',
+    4: 'Appt Show %',
+    5: 'Appt Close %',
+    6: 'OB Phone Calls/Day',
+    7: 'Downpayment (w/o Sales Tax)',
+    8: 'FC Booking %',
+    9: 'Show %',
+    10: 'Close %',
+    11: 'Avg Deal',
+    12: 'Avg FCs/Day',
+    13: 'Downpayments',
+    14: 'Downpayment %',
+    15: 'TAV',
+    16: 'Revenue',
+    17: 'Remaining Draft',
+    18: 'Projected Revenue',
+    19: 'OB Phone Calls',
+    20: 'New Leads',
+    21: 'Appt Scheduled',
+    22: 'Appt Show Count',
+    23: 'Total Tours',
+    24: 'Walk-Ins',
+    25: 'New Members',
+    26: 'Downpayment Amount',
+    27: 'Square DPs',
+    28: 'FCs Booked @ POS',
+    29: 'FCs Made',
+    30: 'FCs Scheduled',
+    31: 'FCs Shows',
+    32: 'FCs Closes',
+    33: 'New Deals',
+    34: 'Sales Tax',
+    35: 'Locations'
+}
 
-    # Column index mapping based on actual spreadsheet structure
-    COL_MAP = {
-        0: 'Entity',
-        1: 'Member Net',
-        2: 'Lead to Member %',
-        3: 'Lead Booked %',
-        4: 'Appt Show %',
-        5: 'Appt Close %',
-        6: 'OB Phone Calls/Day',
-        7: 'Downpayment (w/o Sales Tax)',
-        8: 'FC Booking %',
-        9: 'Show %',
-        10: 'Close %',
-        11: 'Avg Deal',
-        12: 'Avg FCs/Day',
-        13: 'Downpayments',
-        14: 'Downpayment %',
-        15: 'TAV',
-        16: 'Revenue',
-        17: 'Remaining Draft',
-        18: 'Projected Revenue',
-        19: 'OB Phone Calls',
-        20: 'New Leads',
-        21: 'Appt Scheduled',
-        22: 'Appt Show Count',
-        23: 'Total Tours',
-        24: 'Walk-Ins',
-        25: 'New Members',
-        26: 'Downpayment Amount',
-        27: 'Square DPs',
-        28: 'FCs Booked @ POS',
-        29: 'FCs Made',
-        30: 'FCs Scheduled',
-        31: 'FCs Shows',
-        32: 'FCs Closes',
-        33: 'New Deals',
-        34: 'Sales Tax',
-        35: 'Locations'
-    }
+COL_MAP_BUDGET = {
+    0: 'Entity',
+    1: 'Member Net Real',
+    2: 'Member Net Budget',
+    3: 'Member Net to Budget',
+    4: 'New Members Real',
+    5: 'New Members Budget',
+    6: 'New Members % of Budget',
+    7: 'PIF Members Real',
+    8: 'PIF Members Budget',
+    9: 'PIF Members % of Budget',
+    10: 'Downpayment Real',
+    11: 'Downpayment Budget',
+    12: 'Downpayment % of Budget',
+    13: 'Revenue',
+    14: 'Remaining Draft',
+    15: 'Projected Revenue',
+    16: 'Revenue Budget',
+    17: 'Projected Revenue % of Budget'
+}
+
+def load_operational_data(file_path, sheet_name):
+    """Load and parse operational (Daily KPI Scorecard) data"""
+    df = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
 
     def row_to_dict(row_idx):
         """Convert a row to a dictionary using column mapping"""
         result = {}
-        for col_idx, col_name in COL_MAP.items():
+        for col_idx, col_name in COL_MAP_OPERATIONAL.items():
             try:
                 val = df.iloc[row_idx, col_idx]
                 if pd.notna(val):
@@ -230,6 +261,88 @@ def load_data(file_path, sheet_name):
             data['clubs'][entity_name] = club_data
 
     return data, update_time
+
+def load_budget_data(file_path, sheet_name):
+    """Load and parse budget tracker data"""
+    df = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+
+    def row_to_dict(row_idx):
+        """Convert a row to a dictionary using column mapping"""
+        result = {}
+        for col_idx, col_name in COL_MAP_BUDGET.items():
+            try:
+                val = df.iloc[row_idx, col_idx]
+                if pd.notna(val):
+                    result[col_name] = val
+            except:
+                pass
+        return result
+
+    # Parse data
+    data = {
+        'company': None,
+        'territories': {},
+        'regions': {},
+        'clubs': {}
+    }
+
+    # Get update timestamp
+    update_time = str(df.iloc[0, 0]) if pd.notna(df.iloc[0, 0]) else "Unknown"
+
+    # Row indices for different levels (same structure as operational)
+    company_row = 2
+    territory_rows = [5, 6, 7]  # North, South Central, South East
+
+    # Parse company level
+    data['company'] = row_to_dict(company_row)
+
+    # Parse territories
+    for row_idx in territory_rows:
+        row_data = row_to_dict(row_idx)
+        territory_name = row_data.get('Entity')
+        if territory_name:
+            data['territories'][territory_name] = row_data
+
+    # Parse regions (rows 10-21)
+    for row_idx in range(10, 22):
+        row_data = row_to_dict(row_idx)
+        region_name = row_data.get('Entity')
+        if region_name:
+            data['regions'][region_name] = row_data
+
+    # Parse clubs - find all club sections
+    current_region = None
+    for row_idx in range(23, len(df)):
+        entity_name = df.iloc[row_idx, 0]
+        col1_value = df.iloc[row_idx, 1]
+
+        if pd.isna(entity_name):
+            continue
+
+        # Check if this is a region header (budget sheet uses 'Member Net Real' as second col)
+        if col1_value == 'Member Net Real':
+            current_region = entity_name
+            continue
+
+        # This is a club row
+        if current_region and pd.notna(col1_value):
+            club_data = row_to_dict(row_idx)
+            club_data['Region'] = current_region
+            # Find territory for this region
+            for territory, regions in HIERARCHY.items():
+                if current_region in regions:
+                    club_data['Territory'] = territory
+                    break
+            data['clubs'][entity_name] = club_data
+
+    return data, update_time
+
+def load_data(file_path, sheet_name, data_type="operational"):
+    """Load data based on the data source type"""
+    if data_type == "budget":
+        return load_budget_data(file_path, sheet_name)
+    else:
+        return load_operational_data(file_path, sheet_name)
 
 def format_currency(value):
     """Format value as currency"""
@@ -321,140 +434,375 @@ def create_gauge_chart(value, title, max_val=1, color_scale=None):
     )
     return fig
 
-def main():
-    # Sidebar
-    st.sidebar.image("https://images.squarespace-cdn.com/content/v1/63b4569f7fef3c5cee7bf1c4/b1325ffc-6798-46be-92ac-947cef1f7e12/BlueStar+Logo.png", width=200)
-    st.sidebar.markdown("### KPI Dashboard")
-    st.sidebar.markdown("---")
+def create_budget_gauge_chart(value, title, show_over_budget=True):
+    """Create a gauge chart for budget tracking (0-150% range)"""
+    pct_value = value * 100 if value <= 1.5 else value
 
-    # Data source - Live Google Sheet
-    st.sidebar.markdown("**📂 Data Source**")
+    # Determine color based on performance
+    if pct_value >= 100:
+        bar_color = '#34C759'  # Green for at or above budget
+    elif pct_value >= 80:
+        bar_color = '#FF9500'  # Orange for approaching budget
+    else:
+        bar_color = '#FF3B30'  # Red for below budget
 
-    file_path = None
-    source_name = ""
-
-    # Fetch from Google Sheets
-    try:
-        with st.sidebar.status("Fetching live data...", expanded=False) as status:
-            file_path = fetch_google_sheet(GOOGLE_SHEET_ID)
-            status.update(label="✓ Connected to Google Sheet", state="complete")
-        source_name = "Live Google Sheet"
-    except Exception as e:
-        st.sidebar.error(f"Could not connect to Google Sheet.")
-        st.sidebar.markdown("**Troubleshooting:**")
-        st.sidebar.markdown("1. Open Google Sheet")
-        st.sidebar.markdown("2. Click Share → Anyone with link → Viewer")
-        st.error("Unable to connect to Google Sheet. Please check sharing settings.")
-        return
-
-    # File upload function kept for future use but hidden from UI
-    # def load_from_upload():
-    #     uploaded_file = st.sidebar.file_uploader("Upload Daily KPI Scorecard", type=['xlsx'])
-    #     if uploaded_file:
-    #         return uploaded_file, uploaded_file.name
-    #     return None, None
-
-    if file_path is None:
-        st.error("No data source available.")
-        return
-
-    st.sidebar.caption(f"🌐 {source_name}")
-
-    # Load available sheets
-    try:
-        xl = pd.ExcelFile(file_path)
-        month_sheets = [s for s in xl.sheet_names if s not in ['Tracker Directory', 'Sources']]
-        selected_month = st.sidebar.selectbox("Select Month", month_sheets)
-    except Exception as e:
-        st.error(f"Error loading file: {e}")
-        return
-
-    st.sidebar.markdown("---")
-
-    # Load data with caching for better performance
-    @st.cache_data(ttl=300)  # Cache for 5 minutes
-    def load_cached_data(file_content, sheet_name):
-        return load_data(file_content, sheet_name)
-
-    # Load data
-    try:
-        data, update_time = load_data(file_path, selected_month)
-    except Exception as e:
-        st.error(f"Error parsing data: {e}")
-        return
-
-    st.sidebar.markdown("---")
-
-    # View level selection - check session state for navigation
-    view_levels = ["Company", "Territory", "Region", "Club"]
-    default_index = 0
-    if 'view_level' in st.session_state and st.session_state['view_level'] in view_levels:
-        default_index = view_levels.index(st.session_state['view_level'])
-
-    view_level = st.sidebar.radio(
-        "Dashboard Level",
-        view_levels,
-        index=default_index
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=pct_value,
+        title={'text': title, 'font': {'size': 13, 'color': '#666666'}},
+        number={'suffix': '%', 'font': {'size': 28, 'color': '#1D1D1F', 'family': 'SF Pro Display, -apple-system, sans-serif'}},
+        gauge={
+            'axis': {'range': [0, 150], 'ticksuffix': '%', 'tickcolor': '#E5E5E5', 'tickwidth': 1},
+            'bar': {'color': bar_color, 'thickness': 0.7},
+            'bgcolor': '#F5F5F7',
+            'borderwidth': 0,
+            'steps': [
+                {'range': [0, 80], 'color': '#FFE5E5'},
+                {'range': [80, 100], 'color': '#FFF3E0'},
+                {'range': [100, 150], 'color': '#E8F5E9'}
+            ],
+            'threshold': {
+                'line': {'color': '#333333', 'width': 2},
+                'thickness': 0.75,
+                'value': 100
+            }
+        }
+    ))
+    fig.update_layout(
+        height=180,
+        margin=dict(l=20, r=20, t=40, b=10),
+        paper_bgcolor='rgba(0,0,0,0)',
+        font={'family': 'SF Pro Display, -apple-system, sans-serif'}
     )
+    return fig
 
-    # Dynamic filters based on view level
-    selected_territory = None
-    selected_region = None
-    selected_club = None
+def display_budget_metric_card(label, real_value, budget_value, pct_value, prefix="", is_currency=True):
+    """Display a budget vs actual metric card"""
+    real_fmt = f"${real_value:,.0f}" if is_currency else f"{real_value:,.0f}"
+    budget_fmt = f"${budget_value:,.0f}" if is_currency else f"{budget_value:,.0f}"
+    pct_fmt = f"{pct_value*100:.1f}%" if pct_value <= 2 else f"{pct_value:.1f}%"
 
-    if view_level in ["Territory", "Region", "Club"]:
-        territory_list = list(HIERARCHY.keys())
-        territory_index = 0
-        if 'selected_territory' in st.session_state and st.session_state['selected_territory'] in territory_list:
-            territory_index = territory_list.index(st.session_state['selected_territory'])
-        selected_territory = st.sidebar.selectbox(
-            "Select Territory",
-            territory_list,
-            index=territory_index
-        )
+    # Color based on performance
+    if pct_value >= 1:
+        pct_color = '#34C759'
+    elif pct_value >= 0.8:
+        pct_color = '#FF9500'
+    else:
+        pct_color = '#FF3B30'
 
-    if view_level in ["Region", "Club"] and selected_territory:
-        selected_region = st.sidebar.selectbox(
-            "Select Region",
-            list(HIERARCHY[selected_territory].keys())
-        )
+    st.markdown(f"""
+    <div style="background-color: #ffffff;
+                padding: 15px;
+                border-radius: 10px;
+                border: 1px solid #e0e0e0;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                height: 100%;">
+        <p style="color: #666666; font-size: 0.75rem; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">{label}</p>
+        <p style="color: #1E3A5F; font-size: 1.3rem; font-weight: 700; margin: 0;">{real_fmt}</p>
+        <p style="color: #888888; font-size: 0.75rem; margin: 4px 0 0 0;">Budget: {budget_fmt}</p>
+        <p style="color: {pct_color}; font-size: 0.9rem; font-weight: 600; margin: 4px 0 0 0;">{pct_fmt} of Budget</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if view_level == "Club" and selected_region:
-        clubs_in_region = [c for c, d in data['clubs'].items() if d.get('Region') == selected_region]
-        selected_club = st.sidebar.selectbox(
-            "Select Club",
-            clubs_in_region
-        )
+def render_budget_dashboard(data, view_level, selected_territory, selected_region, selected_club):
+    """Render the Budget Tracker dashboard view"""
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Last Updated:** {update_time}")
+    # Determine which data to display
+    if view_level == "Company":
+        display_data = data['company']
+        title = "Company Overview"
+        subtitle = "All Locations - Budget vs Actual"
+    elif view_level == "Territory":
+        display_data = data['territories'].get(selected_territory, {})
+        title = f"Territory: {selected_territory}"
+        subtitle = "Budget vs Actual"
+    elif view_level == "Region":
+        display_data = data['regions'].get(selected_region, {})
+        title = f"Region: {selected_region}"
+        subtitle = f"{selected_territory} Territory - Budget vs Actual"
+    else:  # Club
+        display_data = data['clubs'].get(selected_club, {})
+        title = f"Club: {selected_club}"
+        subtitle = f"{selected_region} Region | {selected_territory} Territory - Budget vs Actual"
 
-    # Database section - DISABLED FOR NOW (to implement later)
-    # Code preserved in database.py for future implementation
+    st.markdown(f"### {title}")
+    st.markdown(f"*{subtitle}*")
+    st.markdown("")
 
-    st.sidebar.markdown("---")
+    # Section 1: Membership Budget vs Actual with Gauges
+    st.markdown("#### 📊 Membership: Budget vs Actual")
 
-    # Auto-refresh option for live data
-    auto_refresh = st.sidebar.checkbox("Auto-refresh (5 min)", value=False, help="Automatically refresh data every 5 minutes")
-    if auto_refresh:
-        import time
-        st.sidebar.caption("⏱️ Auto-refresh enabled")
-        if 'last_refresh' not in st.session_state:
-            st.session_state.last_refresh = time.time()
-        if time.time() - st.session_state.last_refresh > 300:  # 5 minutes
-            st.session_state.last_refresh = time.time()
-            st.cache_data.clear()
-            st.rerun()
+    col1, col2, col3 = st.columns(3)
 
-    # Manual refresh button
-    if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+    # Member Net
+    member_net_real = safe_float(display_data.get('Member Net Real', 0))
+    member_net_budget = safe_float(display_data.get('Member Net Budget', 0))
+    member_net_pct = safe_float(display_data.get('Member Net to Budget', 0))
 
-    # Main content
-    st.markdown('<h1 class="main-header">Blue Star Investments</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Anytime Fitness Franchise KPI Dashboard</p>', unsafe_allow_html=True)
+    # New Members
+    new_members_real = safe_float(display_data.get('New Members Real', 0))
+    new_members_budget = safe_float(display_data.get('New Members Budget', 0))
+    new_members_pct = safe_float(display_data.get('New Members % of Budget', 0))
+
+    # PIF Members
+    pif_real = safe_float(display_data.get('PIF Members Real', 0))
+    pif_budget = safe_float(display_data.get('PIF Members Budget', 0))
+    pif_pct = safe_float(display_data.get('PIF Members % of Budget', 0))
+
+    with col1:
+        display_budget_metric_card("Member Net", member_net_real, member_net_budget, member_net_pct, is_currency=False)
+        st.markdown("")
+        fig = create_budget_gauge_chart(member_net_pct, "Member Net % of Budget")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        display_budget_metric_card("New Members", new_members_real, new_members_budget, new_members_pct, is_currency=False)
+        st.markdown("")
+        fig = create_budget_gauge_chart(new_members_pct, "New Members % of Budget")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col3:
+        display_budget_metric_card("PIF Members", pif_real, pif_budget, pif_pct, is_currency=False)
+        st.markdown("")
+        fig = create_budget_gauge_chart(pif_pct, "PIF Members % of Budget")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("")
+
+    # Section 2: Financial Budget vs Actual
+    st.markdown("#### 💰 Financial: Budget vs Actual")
+
+    col1, col2 = st.columns(2)
+
+    # Downpayment
+    dp_real = safe_float(display_data.get('Downpayment Real', 0))
+    dp_budget = safe_float(display_data.get('Downpayment Budget', 0))
+    dp_pct = safe_float(display_data.get('Downpayment % of Budget', 0))
+
+    # Projected Revenue
+    proj_rev = safe_float(display_data.get('Projected Revenue', 0))
+    rev_budget = safe_float(display_data.get('Revenue Budget', 0))
+    proj_rev_pct = safe_float(display_data.get('Projected Revenue % of Budget', 0))
+
+    with col1:
+        display_budget_metric_card("Downpayment", dp_real, dp_budget, dp_pct, is_currency=True)
+        st.markdown("")
+        fig = create_budget_gauge_chart(dp_pct, "Downpayment % of Budget")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        display_budget_metric_card("Projected Revenue", proj_rev, rev_budget, proj_rev_pct, is_currency=True)
+        st.markdown("")
+        fig = create_budget_gauge_chart(proj_rev_pct, "Projected Revenue % of Budget")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("")
+
+    # Section 3: Summary Financial Cards
+    st.markdown("#### 📈 Financial Summary")
+    col1, col2, col3 = st.columns(3)
+
+    revenue = safe_float(display_data.get('Revenue', 0))
+    remaining_draft = safe_float(display_data.get('Remaining Draft', 0))
+
+    with col1:
+        display_metric_card("Revenue (MTD)", f"{revenue:,.2f}", prefix="$")
+    with col2:
+        display_metric_card("Remaining Draft", f"{remaining_draft:,.2f}", prefix="$")
+    with col3:
+        display_metric_card("Projected Revenue", f"{proj_rev:,.2f}", prefix="$")
+
+    st.markdown("")
+
+    # Section 4: Comparison Charts (Company/Territory/Region views)
+    if view_level != "Club":
+        st.markdown("---")
+        st.markdown("#### 📊 Budget Performance Comparison")
+
+        if view_level == "Company":
+            compare_data = data['territories']
+            compare_title = "Territory"
+            level_name = "Territories"
+        elif view_level == "Territory":
+            compare_data = {k: v for k, v in data['regions'].items()
+                          if k in HIERARCHY.get(selected_territory, {})}
+            compare_title = "Region"
+            level_name = f"Regions in {selected_territory}"
+        else:  # Region
+            compare_data = {k: v for k, v in data['clubs'].items()
+                          if v.get('Region') == selected_region}
+            compare_title = "Club"
+            level_name = f"Clubs in {selected_region}"
+
+        if compare_data:
+            # Build comparison dataframe
+            comparison_rows = []
+            for name, metrics in compare_data.items():
+                try:
+                    row = {
+                        'Entity': name,
+                        'Member Net Real': safe_float(metrics.get('Member Net Real', 0)),
+                        'Member Net Budget': safe_float(metrics.get('Member Net Budget', 0)),
+                        'Member Net %': safe_float(metrics.get('Member Net to Budget', 0)) * 100,
+                        'New Members Real': safe_float(metrics.get('New Members Real', 0)),
+                        'New Members Budget': safe_float(metrics.get('New Members Budget', 0)),
+                        'New Members %': safe_float(metrics.get('New Members % of Budget', 0)) * 100,
+                        'Downpayment Real': safe_float(metrics.get('Downpayment Real', 0)),
+                        'Downpayment Budget': safe_float(metrics.get('Downpayment Budget', 0)),
+                        'Downpayment %': safe_float(metrics.get('Downpayment % of Budget', 0)) * 100,
+                        'Projected Revenue': safe_float(metrics.get('Projected Revenue', 0)),
+                        'Revenue Budget': safe_float(metrics.get('Revenue Budget', 0)),
+                        'Projected Revenue %': safe_float(metrics.get('Projected Revenue % of Budget', 0)) * 100,
+                    }
+                    comparison_rows.append(row)
+                except Exception as e:
+                    pass
+
+            if comparison_rows:
+                df_compare = pd.DataFrame(comparison_rows)
+
+                # Real vs Budget grouped bar chart for New Members
+                st.markdown(f"##### New Members: Real vs Budget by {compare_title}")
+
+                df_members = df_compare[['Entity', 'New Members Real', 'New Members Budget']].melt(
+                    id_vars=['Entity'], var_name='Type', value_name='Count'
+                )
+
+                fig = px.bar(df_members, x='Entity', y='Count', color='Type',
+                            barmode='group',
+                            color_discrete_map={'New Members Real': '#0066CC', 'New Members Budget': '#CCCCCC'})
+                fig.update_layout(
+                    height=350,
+                    xaxis_tickangle=-45,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                               bgcolor='rgba(0,0,0,0)', font={'size': 11}),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    xaxis={'gridcolor': '#F0F0F0'},
+                    yaxis={'gridcolor': '#F0F0F0', 'title': 'Count'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Real vs Budget grouped bar chart for Revenue
+                st.markdown(f"##### Projected Revenue: Real vs Budget by {compare_title}")
+
+                df_revenue = df_compare[['Entity', 'Projected Revenue', 'Revenue Budget']].melt(
+                    id_vars=['Entity'], var_name='Type', value_name='Amount'
+                )
+
+                fig = px.bar(df_revenue, x='Entity', y='Amount', color='Type',
+                            barmode='group',
+                            color_discrete_map={'Projected Revenue': '#34C759', 'Revenue Budget': '#CCCCCC'})
+                fig.update_layout(
+                    height=350,
+                    xaxis_tickangle=-45,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                               bgcolor='rgba(0,0,0,0)', font={'size': 11}),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    xaxis={'gridcolor': '#F0F0F0'},
+                    yaxis={'gridcolor': '#F0F0F0', 'tickprefix': '$', 'tickformat': ',', 'title': 'Revenue'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Budget % Performance Heatmap
+                st.markdown(f"##### % of Budget Performance by {compare_title}")
+
+                pct_cols = ['Member Net %', 'New Members %', 'Downpayment %', 'Projected Revenue %']
+                df_heatmap = df_compare[['Entity'] + pct_cols].set_index('Entity')
+
+                # Custom colorscale: red below 80, orange 80-100, green above 100
+                fig = px.imshow(df_heatmap,
+                               labels=dict(x="Metric", y=compare_title, color="% of Budget"),
+                               color_continuous_scale=[[0, '#FF3B30'], [0.53, '#FF9500'], [0.67, '#FFCC00'], [1, '#34C759']],
+                               aspect="auto",
+                               text_auto='.1f',
+                               zmin=0, zmax=150)
+                fig.update_layout(
+                    title={'text': f'% of Budget Heatmap (Target: 100%)', 'font': {'size': 14, 'color': '#333333'}},
+                    height=max(280, len(df_compare) * 35),
+                    margin=dict(l=10, r=20, t=40, b=20),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font={'family': 'SF Pro Display, -apple-system, sans-serif'}
+                )
+                fig.update_traces(textfont={'size': 12, 'color': '#333333'})
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Summary Table
+                st.markdown(f"##### {level_name} - Budget Summary Table")
+                df_display = df_compare.copy()
+                df_display['Member Net Real'] = df_display['Member Net Real'].apply(lambda x: f"{x:,.0f}")
+                df_display['Member Net Budget'] = df_display['Member Net Budget'].apply(lambda x: f"{x:,.0f}")
+                df_display['Member Net %'] = df_display['Member Net %'].apply(lambda x: f"{x:.1f}%")
+                df_display['New Members Real'] = df_display['New Members Real'].apply(lambda x: f"{x:,.0f}")
+                df_display['New Members Budget'] = df_display['New Members Budget'].apply(lambda x: f"{x:,.0f}")
+                df_display['New Members %'] = df_display['New Members %'].apply(lambda x: f"{x:.1f}%")
+                df_display['Downpayment Real'] = df_display['Downpayment Real'].apply(lambda x: f"${x:,.0f}")
+                df_display['Downpayment Budget'] = df_display['Downpayment Budget'].apply(lambda x: f"${x:,.0f}")
+                df_display['Downpayment %'] = df_display['Downpayment %'].apply(lambda x: f"{x:.1f}%")
+                df_display['Projected Revenue'] = df_display['Projected Revenue'].apply(lambda x: f"${x:,.0f}")
+                df_display['Revenue Budget'] = df_display['Revenue Budget'].apply(lambda x: f"${x:,.0f}")
+                df_display['Projected Revenue %'] = df_display['Projected Revenue %'].apply(lambda x: f"{x:.1f}%")
+
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    # Section 5: Detailed Metrics Table
     st.markdown("---")
+    st.markdown("#### 📋 Detailed Budget Metrics")
+
+    metrics_to_show = [
+        ('Member Net Real', 'number'),
+        ('Member Net Budget', 'number'),
+        ('Member Net to Budget', 'percent'),
+        ('New Members Real', 'number'),
+        ('New Members Budget', 'number'),
+        ('New Members % of Budget', 'percent'),
+        ('PIF Members Real', 'number'),
+        ('PIF Members Budget', 'number'),
+        ('PIF Members % of Budget', 'percent'),
+        ('Downpayment Real', 'currency'),
+        ('Downpayment Budget', 'currency'),
+        ('Downpayment % of Budget', 'percent'),
+        ('Revenue', 'currency'),
+        ('Remaining Draft', 'currency'),
+        ('Projected Revenue', 'currency'),
+        ('Revenue Budget', 'currency'),
+        ('Projected Revenue % of Budget', 'percent'),
+    ]
+
+    table_data = []
+    for metric, fmt in metrics_to_show:
+        value = display_data.get(metric, 0)
+        if fmt == 'currency':
+            formatted = format_currency(value)
+        elif fmt == 'percent':
+            formatted = format_percent(value)
+        else:
+            formatted = format_number(value)
+        table_data.append({'Metric': metric, 'Value': formatted})
+
+    df_table = pd.DataFrame(table_data)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.dataframe(df_table.iloc[:len(df_table)//2], use_container_width=True, hide_index=True)
+    with col2:
+        st.dataframe(df_table.iloc[len(df_table)//2:], use_container_width=True, hide_index=True)
+
+    # Drill-down navigation
+    st.markdown("---")
+    if view_level == "Company":
+        st.markdown("**Quick Navigation:** Select a territory in the sidebar to drill down")
+        cols = st.columns(3)
+        for i, territory in enumerate(HIERARCHY.keys()):
+            with cols[i]:
+                if st.button(f"View {territory}", key=f"budget_nav_{territory}"):
+                    st.session_state['view_level'] = 'Territory'
+                    st.session_state['selected_territory'] = territory
+                    st.rerun()
+
+def render_operational_dashboard(data, view_level, selected_territory, selected_region, selected_club):
+    """Render the operational (Daily KPI Scorecard) dashboard view"""
 
     # Determine which data to display
     if view_level == "Company":
@@ -561,7 +909,7 @@ def main():
         for club_name, metrics in filtered_clubs.items():
             pt_proj_rev = safe_float(metrics.get('Projected Revenue', 0))
             pt_revenue = safe_float(metrics.get('Revenue', 0))
-            avg_deal = safe_float(metrics.get('Avg Deal', 0))
+            avg_deal_val = safe_float(metrics.get('Avg Deal', 0))
             fc_closes = safe_float(metrics.get('FCs Closes', 0))
             region = metrics.get('Region', '')
             territory = metrics.get('Territory', '')
@@ -571,7 +919,7 @@ def main():
                 'Territory': territory,
                 'PT Projected Revenue': pt_proj_rev,
                 'PT Revenue (MTD)': pt_revenue,
-                'Avg Deal': avg_deal,
+                'Avg Deal': avg_deal_val,
                 'FC Closes': fc_closes
             })
 
@@ -1053,9 +1401,6 @@ def main():
     with col2:
         st.dataframe(df_table.iloc[len(df_table)//2:], use_container_width=True, hide_index=True)
 
-    # Historical Trends Section - DISABLED FOR NOW (to implement later)
-    # Code preserved in database.py for future implementation
-
     # Drill-down navigation
     st.markdown("---")
     if view_level == "Company":
@@ -1067,6 +1412,173 @@ def main():
                     st.session_state['view_level'] = 'Territory'
                     st.session_state['selected_territory'] = territory
                     st.rerun()
+
+def main():
+    # Sidebar
+    st.sidebar.image("https://images.squarespace-cdn.com/content/v1/63b4569f7fef3c5cee7bf1c4/b1325ffc-6798-46be-92ac-947cef1f7e12/BlueStar+Logo.png", width=200)
+    st.sidebar.markdown("### KPI Dashboard")
+    st.sidebar.markdown("---")
+
+    # Data source selection
+    st.sidebar.markdown("**📂 Data Source**")
+
+    # Get default index from session state or use default
+    source_names = list(DATA_SOURCES.keys())
+    default_source_index = 0
+    if 'selected_data_source' in st.session_state and st.session_state['selected_data_source'] in source_names:
+        default_source_index = source_names.index(st.session_state['selected_data_source'])
+
+    selected_source = st.sidebar.selectbox(
+        "Select Data Source",
+        source_names,
+        index=default_source_index,
+        key="data_source_selector"
+    )
+
+    # Store selection in session state
+    st.session_state['selected_data_source'] = selected_source
+
+    # Get data source info (id and type)
+    source_info = DATA_SOURCES[selected_source]
+    selected_sheet_id = source_info["id"]
+    data_type = source_info["type"]
+
+    file_path = None
+    source_name = ""
+
+    # Fetch from Google Sheets
+    try:
+        with st.sidebar.status("Fetching live data...", expanded=False) as status:
+            file_path = fetch_google_sheet(selected_sheet_id)
+            status.update(label="✓ Connected to Google Sheet", state="complete")
+        source_name = selected_source
+    except Exception as e:
+        st.sidebar.error(f"Could not connect to Google Sheet.")
+        st.sidebar.markdown("**Troubleshooting:**")
+        st.sidebar.markdown("1. Open Google Sheet")
+        st.sidebar.markdown("2. Click Share → Anyone with link → Viewer")
+        st.error("Unable to connect to Google Sheet. Please check sharing settings.")
+        return
+
+    # File upload function kept for future use but hidden from UI
+    # def load_from_upload():
+    #     uploaded_file = st.sidebar.file_uploader("Upload Daily KPI Scorecard", type=['xlsx'])
+    #     if uploaded_file:
+    #         return uploaded_file, uploaded_file.name
+    #     return None, None
+
+    if file_path is None:
+        st.error("No data source available.")
+        return
+
+    st.sidebar.caption(f"🌐 {source_name}")
+
+    # Load available sheets
+    try:
+        xl = pd.ExcelFile(file_path)
+        month_sheets = [s for s in xl.sheet_names if s not in ['Tracker Directory', 'Sources']]
+        selected_month = st.sidebar.selectbox("Select Month", month_sheets)
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return
+
+    st.sidebar.markdown("---")
+
+    # Load data with caching for better performance
+    @st.cache_data(ttl=300)  # Cache for 5 minutes
+    def load_cached_data(file_content, sheet_name, dtype):
+        return load_data(file_content, sheet_name, dtype)
+
+    # Load data
+    try:
+        data, update_time = load_data(file_path, selected_month, data_type)
+    except Exception as e:
+        st.error(f"Error parsing data: {e}")
+        return
+
+    st.sidebar.markdown("---")
+
+    # View level selection - check session state for navigation
+    view_levels = ["Company", "Territory", "Region", "Club"]
+    default_index = 0
+    if 'view_level' in st.session_state and st.session_state['view_level'] in view_levels:
+        default_index = view_levels.index(st.session_state['view_level'])
+
+    view_level = st.sidebar.radio(
+        "Dashboard Level",
+        view_levels,
+        index=default_index
+    )
+
+    # Dynamic filters based on view level
+    selected_territory = None
+    selected_region = None
+    selected_club = None
+
+    if view_level in ["Territory", "Region", "Club"]:
+        territory_list = list(HIERARCHY.keys())
+        territory_index = 0
+        if 'selected_territory' in st.session_state and st.session_state['selected_territory'] in territory_list:
+            territory_index = territory_list.index(st.session_state['selected_territory'])
+        selected_territory = st.sidebar.selectbox(
+            "Select Territory",
+            territory_list,
+            index=territory_index
+        )
+
+    if view_level in ["Region", "Club"] and selected_territory:
+        selected_region = st.sidebar.selectbox(
+            "Select Region",
+            list(HIERARCHY[selected_territory].keys())
+        )
+
+    if view_level == "Club" and selected_region:
+        clubs_in_region = [c for c, d in data['clubs'].items() if d.get('Region') == selected_region]
+        selected_club = st.sidebar.selectbox(
+            "Select Club",
+            clubs_in_region
+        )
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**Last Updated:** {update_time}")
+
+    # Database section - DISABLED FOR NOW (to implement later)
+    # Code preserved in database.py for future implementation
+
+    st.sidebar.markdown("---")
+
+    # Auto-refresh option for live data
+    auto_refresh = st.sidebar.checkbox("Auto-refresh (5 min)", value=False, help="Automatically refresh data every 5 minutes")
+    if auto_refresh:
+        import time
+        st.sidebar.caption("⏱️ Auto-refresh enabled")
+        if 'last_refresh' not in st.session_state:
+            st.session_state.last_refresh = time.time()
+        if time.time() - st.session_state.last_refresh > 300:  # 5 minutes
+            st.session_state.last_refresh = time.time()
+            st.cache_data.clear()
+            st.rerun()
+
+    # Manual refresh button
+    if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+    # Main content
+    st.markdown('<h1 class="main-header">Blue Star Investments</h1>', unsafe_allow_html=True)
+
+    # Display appropriate subtitle based on data type
+    if data_type == "operational":
+        st.markdown('<p class="sub-header">Anytime Fitness Franchise KPI Dashboard</p>', unsafe_allow_html=True)
+    else:
+        st.markdown('<p class="sub-header">Budget vs Actual Tracking Dashboard</p>', unsafe_allow_html=True)
+    st.markdown("---")
+
+    # Render appropriate dashboard based on data type
+    if data_type == "operational":
+        render_operational_dashboard(data, view_level, selected_territory, selected_region, selected_club)
+    else:
+        render_budget_dashboard(data, view_level, selected_territory, selected_region, selected_club)
 
 if __name__ == "__main__":
     main()
